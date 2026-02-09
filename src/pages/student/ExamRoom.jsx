@@ -9,9 +9,10 @@ import IntroBreakScreen from '../../components/exam/molecules/IntroBreakScreen';
 import LatexText from '../../components/exam/atoms/LatexText';
 import { useExamStore } from '../../store/examStore';
 import Modal from '../../components/common/Modal';
-import { ALL_QUESTIONS, EXAM_PHASES } from '../../data/mockExamData';
+import { ALL_QUESTIONS as MOCK_QUESTIONS, EXAM_PHASES } from '../../data/mockExamData';
 import { studentApi } from '../../api/studentApi';
 import { reviewApi } from '../../api/reviewApi';
+import LoadingSpinner from '../../components/common/LoadingSpinner';
 
 export default function ExamRoom() {
   const navigate = useNavigate();
@@ -35,14 +36,37 @@ export default function ExamRoom() {
   const [frqUploadStatus, setFrqUploadStatus] = useState({});
   const [examEnded, setExamEnded] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [questionsLoading, setQuestionsLoading] = useState(true);
+  const [allQuestions, setAllQuestions] = useState([]);
   const participantId = studentApi.DEMO_PARTICIPANT_ID;
 
   const currentPhase = EXAM_PHASES[currentPhaseIndex];
   const isLastPhase = currentPhaseIndex === EXAM_PHASES.length - 1;
 
   useEffect(() => {
-    initExam('demo-exam-1', 'demo-attempt-1', ALL_QUESTIONS);
+    let cancelled = false;
+
+    async function loadQuestions() {
+      try {
+        const questions = await studentApi.getExamQuestions();
+        if (!cancelled) {
+          setAllQuestions(questions);
+          initExam(studentApi.DEMO_EXAM_ID, 'demo-attempt-1', questions);
+        }
+      } catch (err) {
+        console.warn('Supabase fetch failed, falling back to mock data:', err.message);
+        if (!cancelled) {
+          setAllQuestions(MOCK_QUESTIONS);
+          initExam('demo-exam-1', 'demo-attempt-1', MOCK_QUESTIONS);
+        }
+      } finally {
+        if (!cancelled) setQuestionsLoading(false);
+      }
+    }
+
+    loadQuestions();
     return () => {
+      cancelled = true;
       if (isExamActive) clearExam();
     };
   }, []);
@@ -101,6 +125,14 @@ export default function ExamRoom() {
     return new Date(phaseStartTime + currentPhase.duration * 1000).toISOString();
   }, [phaseStartTime, currentPhaseIndex, currentPhase]);
 
+  if (questionsLoading || allQuestions.length === 0) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-gray-50">
+        <LoadingSpinner size="lg" text="Loading exam questions..." />
+      </div>
+    );
+  }
+
   if (currentPhase.type === 'intro') {
     return <IntroBreakScreen type="intro" duration={currentPhase.duration} onContinue={advancePhase} />;
   }
@@ -117,10 +149,10 @@ export default function ExamRoom() {
   }
 
   const [sectionStart, sectionEnd] = currentPhase.questionRange;
-  const sectionQuestions = ALL_QUESTIONS.slice(sectionStart, sectionEnd + 1);
+  const sectionQuestions = allQuestions.slice(sectionStart, sectionEnd + 1);
   const sectionTotalQuestions = sectionQuestions.length;
   const localIndex = currentQuestionIndex - sectionStart;
-  const currentQuestion = ALL_QUESTIONS[currentQuestionIndex];
+  const currentQuestion = allQuestions[currentQuestionIndex];
   const currentAnswer = answers[currentQuestion?.id];
 
   if (!currentQuestion) {
@@ -197,7 +229,7 @@ export default function ExamRoom() {
       const attempt = await reviewApi.submitExamAttempt(
         participantId,
         'demo-exam-1',
-        ALL_QUESTIONS,
+        allQuestions,
         answers
       );
       clearExam();
