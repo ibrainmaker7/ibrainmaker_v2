@@ -56,6 +56,15 @@ export const studentApi = {
   DEMO_EXAM_ID,
 
   async getExamQuestions(examId = DEMO_EXAM_ID) {
+    console.log(`🔍 [Debug] Fetching questions for Exam ID: "${examId}"`);
+
+    // 1. 먼저 조건 없이 시험지 연결 테이블만 조회해봅니다 (연결 테스트)
+    const { count } = await supabase
+      .from('exam_questions')
+      .select('*', { count: 'exact', head: true });
+    console.log(`📊 [Debug] Total rows in exam_questions table: ${count}`);
+
+    // 2. 실제 데이터 조회
     const { data, error } = await supabase
       .from('exam_questions')
       .select(`
@@ -76,16 +85,29 @@ export const studentApi = {
       .eq('exam_id', examId)
       .order('sequence_order', { ascending: true });
 
-    if (error) throw error;
-    if (!data || data.length === 0) throw new Error('No questions found for this exam');
+    if (error) {
+      console.error('❌ [Debug] Supabase Error:', error);
+      throw error;
+    }
 
-    // 문제 번호 매기기 로직 (유지)
+    console.log('✅ [Debug] Data returned from Supabase:', data);
+
+    if (!data || data.length === 0) {
+      console.warn(`⚠️ [Debug] No questions found! Check if examId "${examId}" matches DB.`);
+      throw new Error('No questions found for this exam');
+    }
+
+    // 데이터 매핑 로직
     let mcqNum = 0;
     let frqNum = 0;
     return data.map((row, i) => {
-      const mapped = mapDBQuestionToApp(row, i);
+      // 만약 Join 된 questions가 null이면 데이터 무결성 문제
+      if (!row.questions) {
+        console.error('❌ [Debug] Broken Link! exam_question exists but question is null.', row);
+        return null; 
+      }
       
-      // 번호 체계: FRQ와 MCQ를 따로 카운트
+      const mapped = mapDBQuestionToApp(row, i);
       if (mapped.question_type === 'frq') {
         frqNum++;
         mapped.question_number = frqNum;
@@ -94,7 +116,7 @@ export const studentApi = {
         mapped.question_number = mcqNum;
       }
       return mapped;
-    });
+    }).filter(q => q !== null); // 깨진 데이터 제외
   },
 
   async getFRQSubmissions(participantId = DEMO_PARTICIPANT_ID) {
