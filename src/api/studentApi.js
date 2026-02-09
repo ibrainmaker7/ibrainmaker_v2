@@ -6,20 +6,22 @@ const DEMO_EXAM_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
 function mapDBQuestionToApp(row, index) {
   const q = row.questions;
   
-  // JSONB 데이터 안전하게 가져오기
+  // JSONB 데이터 가져오기 (없으면 빈 객체)
   const structureData = q.structure_data || {};
   const gradingLogic = q.grading_logic || {};
 
-  // 1. 객관식 보기 처리 (DB는 structure_data 자체가 배열일 수 있음)
+  // 1. 객관식 보기(Options) 처리
+  // DB에 [ {key:'A'...}, ... ] 배열로 저장된 경우와 { options: [...] } 객체로 저장된 경우 모두 대응
   const isMCQ = q.structure_type === 'mcq';
   let options = [];
   let parts = null;
 
   if (isMCQ) {
-    // 배열이면 그대로 쓰고, 아니면 .options를 찾음
-    options = Array.isArray(structureData) ? structureData : (structureData.options || []);
+    options = Array.isArray(structureData) 
+      ? structureData 
+      : (structureData.options || []);
   } else {
-    // 주관식은 parts 정보 가져오기 (예: ["page1", "page2"])
+    // 주관식은 parts 정보 가져오기
     parts = structureData.parts || null;
   }
 
@@ -30,17 +32,17 @@ function mapDBQuestionToApp(row, index) {
 
   return {
     id: q.id,
-    question_number: index + 1, // (나중에 호출부에서 재설정됨)
+    question_number: index + 1, // (호출부에서 MCQ/FRQ 별로 다시 번호 매김)
     question_type: q.structure_type || 'mcq',
-    question_text: q.content_text || '', // DB 컬럼명 매핑
+    question_text: q.content_text || '',
     passage: q.passage || null,
     image_url: imageUrl,
     
-    // 매핑된 데이터들
+    // 매핑된 데이터
     options,
-    parts, 
+    parts,
     
-    // 정답 및 해설 매핑 (DB 컬럼명 차이 해결)
+    // 3. 정답 및 해설 매핑 (DB 컬럼명 차이 해결: correct_option vs correct_answer)
     correct_answer: gradingLogic.correct_option || gradingLogic.correct_answer || null,
     explanation: gradingLogic.explanation || q.explanation || null,
     rubric: gradingLogic.rubric || null, // 주관식 채점 기준
