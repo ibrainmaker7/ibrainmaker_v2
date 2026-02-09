@@ -34,6 +34,7 @@ export default function ExamRoom() {
   const [eliminatedOptions, setEliminatedOptions] = useState({});
   const [frqUploadStatus, setFrqUploadStatus] = useState({});
   const [examEnded, setExamEnded] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const participantId = studentApi.DEMO_PARTICIPANT_ID;
 
   const currentPhase = EXAM_PHASES[currentPhaseIndex];
@@ -187,7 +188,7 @@ export default function ExamRoom() {
     setExamEnded(true);
   };
 
-  const [submitting, setSubmitting] = useState(false);
+  
 
   const handleFinalSubmit = async () => {
     if (submitting) return;
