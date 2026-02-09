@@ -137,6 +137,7 @@ function EditableRubricTable({ rubric, onToggle }) {
   );
 }
 
+// ✅ [수정됨] 스크롤 영역과 고정 버튼 영역 분리 (Flex Layout 적용)
 function GradingPanel({ student, questionId, onScoreUpdate, onRelease }) {
   const [aiResult, setAiResult] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -218,80 +219,84 @@ function GradingPanel({ student, questionId, onScoreUpdate, onRelease }) {
   const isConfirmed = student.frq_grades?.[questionId]?.status === 'confirmed';
 
   return (
-    <div className="p-4 h-full overflow-y-auto space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Bot className="w-4 h-4 text-blue-600" />
-          <span className="text-sm font-semibold text-gray-800">AI Grading Report</span>
-        </div>
-        {isModified && (
-          <button
-            onClick={handleReset}
-            className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors"
-          >
-            <RotateCcw className="w-3 h-3" />
-            Reset to AI
-          </button>
-        )}
-      </div>
-
-      <div className="flex items-start gap-4">
-        <ScoreRing score={editedScore} maxScore={maxScore} />
-        <div className="flex-1">
-          <div className="flex items-center gap-2 mb-2">
-            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Override Score</label>
-            {isModified && (
-              <span className="text-xs text-amber-600 font-medium">(Modified)</span>
-            )}
-          </div>
+    <div className="flex flex-col h-full overflow-hidden bg-white">
+      {/* 1. Scrollable Content Area */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <input
-              type="number"
-              min={0}
-              max={maxScore}
-              value={editedScore}
-              onChange={(e) => handleScoreChange(e.target.value)}
-              className="w-16 px-2 py-1.5 border border-gray-300 rounded-lg text-sm font-semibold text-center focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+            <Bot className="w-4 h-4 text-blue-600" />
+            <span className="text-sm font-semibold text-gray-800">AI Grading Report</span>
+          </div>
+          {isModified && (
+            <button
+              onClick={handleReset}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+            >
+              <RotateCcw className="w-3 h-3" />
+              Reset to AI
+            </button>
+          )}
+        </div>
+
+        <div className="flex items-start gap-4">
+          <ScoreRing score={editedScore} maxScore={maxScore} />
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-2">
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Override Score</label>
+              {isModified && (
+                <span className="text-xs text-amber-600 font-medium">(Modified)</span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min={0}
+                max={maxScore}
+                value={editedScore}
+                onChange={(e) => handleScoreChange(e.target.value)}
+                className="w-16 px-2 py-1.5 border border-gray-300 rounded-lg text-sm font-semibold text-center focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+              />
+              <span className="text-sm text-gray-500">/ {maxScore}</span>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between mb-1.5">
+            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Feedback</h4>
+            <button
+              onClick={() => setIsEditingFeedback(!isEditingFeedback)}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs text-blue-600 hover:bg-blue-50 transition-colors"
+            >
+              <Pencil className="w-3 h-3" />
+              {isEditingFeedback ? 'Preview' : 'Edit'}
+            </button>
+          </div>
+          {isEditingFeedback ? (
+            <textarea
+              value={editedFeedback}
+              onChange={(e) => { setEditedFeedback(e.target.value); setIsModified(true); }}
+              rows={4}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 leading-relaxed focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-y"
             />
-            <span className="text-sm text-gray-500">/ {maxScore}</span>
-          </div>
+          ) : (
+            <div className="px-3 py-2 bg-blue-50 border border-blue-100 rounded-lg text-sm text-gray-700 leading-relaxed">
+              <LatexText>{editedFeedback}</LatexText>
+            </div>
+          )}
         </div>
+
+        <EditableRubricTable rubric={rubric} onToggle={handleRubricToggle} />
       </div>
 
-      <div>
-        <div className="flex items-center justify-between mb-1.5">
-          <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Feedback</h4>
-          <button
-            onClick={() => setIsEditingFeedback(!isEditingFeedback)}
-            className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs text-blue-600 hover:bg-blue-50 transition-colors"
-          >
-            <Pencil className="w-3 h-3" />
-            {isEditingFeedback ? 'Preview' : 'Edit'}
-          </button>
-        </div>
-        {isEditingFeedback ? (
-          <textarea
-            value={editedFeedback}
-            onChange={(e) => { setEditedFeedback(e.target.value); setIsModified(true); }}
-            rows={4}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 leading-relaxed focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-y"
-          />
-        ) : (
-          <div className="px-3 py-2 bg-blue-50 border border-blue-100 rounded-lg text-sm text-gray-700 leading-relaxed">
-            <LatexText>{editedFeedback}</LatexText>
-          </div>
-        )}
-      </div>
-
-      <EditableRubricTable rubric={rubric} onToggle={handleRubricToggle} />
-
-      <div className="pt-2 flex items-center gap-3">
+      {/* 2. Fixed Button Footer */}
+      <div className="p-4 border-t border-gray-200 bg-gray-50 flex-shrink-0 flex items-center justify-end gap-3 z-10">
         <button
           onClick={() => onScoreUpdate(questionId, editedScore, editedFeedback, rubric)}
-          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-white border border-gray-300 text-gray-700 hover:bg-gray-100 transition-colors shadow-sm"
         >
           <Save className="w-3.5 h-3.5" />
-          Save Changes
+          Save
         </button>
         {!isConfirmed && (
           <button
@@ -299,14 +304,14 @@ function GradingPanel({ student, questionId, onScoreUpdate, onRelease }) {
               onScoreUpdate(questionId, editedScore, editedFeedback, rubric);
               onRelease(questionId, editedScore);
             }}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-green-600 text-white hover:bg-green-700 transition-colors"
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-green-600 text-white hover:bg-green-700 transition-colors shadow-sm"
           >
             <ShieldCheck className="w-3.5 h-3.5" />
             Confirm & Release
           </button>
         )}
         {isConfirmed && (
-          <span className="inline-flex items-center gap-1 text-xs text-green-600 font-semibold">
+          <span className="inline-flex items-center gap-1 text-xs text-green-600 font-semibold px-2">
             <ShieldCheck className="w-3.5 h-3.5" />
             Grade Released
           </span>
@@ -415,6 +420,7 @@ export default function GradingDetailModal({
         </div>
 
         <div className="flex-1 flex overflow-hidden">
+          {/* Left Panel: Images */}
           <div className="w-1/2 border-r border-gray-200 bg-gray-50 overflow-hidden">
             <div className="px-4 py-2.5 bg-white border-b border-gray-200">
               <h3 className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
@@ -424,23 +430,27 @@ export default function GradingDetailModal({
             <ImagePanel submissions={student.frq_submissions || {}} questionId={currentFRQ.id} />
           </div>
 
-          <div className="w-1/2 overflow-hidden">
-            <div className="px-4 py-2.5 bg-white border-b border-gray-200">
+          {/* Right Panel: Grading (Layout fixed) */}
+          <div className="w-1/2 flex flex-col overflow-hidden bg-white">
+            <div className="px-4 py-2.5 bg-white border-b border-gray-200 flex-shrink-0">
               <h3 className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
                 AI Report & Teacher Override
               </h3>
             </div>
-            <GradingPanel
-              key={`${student.id}-${currentFRQ.id}`}
-              student={student}
-              questionId={currentFRQ.id}
-              onScoreUpdate={handleScoreUpdate}
-              onRelease={handleRelease}
-            />
+            <div className="flex-1 overflow-hidden">
+                <GradingPanel
+                  key={`${student.id}-${currentFRQ.id}`}
+                  student={student}
+                  questionId={currentFRQ.id}
+                  onScoreUpdate={handleScoreUpdate}
+                  onRelease={handleRelease}
+                />
+            </div>
           </div>
         </div>
 
-        <div className="flex items-center justify-between px-6 py-3 border-t border-gray-200 bg-gray-50">
+        {/* Modal Footer (Navigation) */}
+        <div className="flex items-center justify-between px-6 py-3 border-t border-gray-200 bg-gray-50 flex-shrink-0">
           <button
             onClick={() => setCurrentFRQIndex(i => Math.max(0, i - 1))}
             disabled={currentFRQIndex === 0}
