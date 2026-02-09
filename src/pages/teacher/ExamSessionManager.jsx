@@ -1,8 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Users, RefreshCw, CloudUpload, CheckCircle, Clock, Send, AlertTriangle } from 'lucide-react';
+import { Users, RefreshCw, CloudUpload, CheckCircle, Clock, Send, AlertTriangle, Monitor, ClipboardCheck } from 'lucide-react';
 import { teacherApi } from '../../api/teacherApi';
 import TeacherUploadModal from '../../components/teacher/TeacherUploadModal';
+import GradingQueue from '../../components/teacher/GradingQueue';
+import GradingDetailModal from '../../components/teacher/GradingDetailModal';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
+import { MOCK_STUDENTS } from '../../data/mockGradingData';
 
 const STATUS_CONFIG = {
   in_progress: { label: 'In Progress', icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50', border: 'border-amber-200' },
@@ -12,7 +15,6 @@ const STATUS_CONFIG = {
 
 function SubmissionCell({ submission }) {
   if (!submission) return null;
-
   const isAdmin = submission.submitted_by === 'teacher_manual_support';
 
   return (
@@ -63,14 +65,12 @@ function StudentRow({ participant, frqQuestions, onUploadClick }) {
           <p className="text-xs text-gray-400 mt-0.5">{participant.student_email}</p>
         </div>
       </td>
-
       <td className="px-5 py-4">
         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${statusConf.bg} ${statusConf.color} border ${statusConf.border}`}>
           <StatusIcon className="w-3 h-3" />
           {statusConf.label}
         </span>
       </td>
-
       {frqQuestions.map(q =>
         q.pages.map(pageKey => {
           const sub = getSubmission(q.id, pageKey);
@@ -85,7 +85,6 @@ function StudentRow({ participant, frqQuestions, onUploadClick }) {
           );
         })
       )}
-
       <td className="px-5 py-4 text-center">
         {allSubmitted ? (
           <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-600">
@@ -103,7 +102,71 @@ function StudentRow({ participant, frqQuestions, onUploadClick }) {
   );
 }
 
+function LiveMonitorTab({ participants, frqQuestions, onUploadClick, error }) {
+  const completedCount = participants.filter(p => p.exam_status === 'submitted' || p.exam_status === 'completed').length;
+  const inProgressCount = participants.filter(p => p.exam_status === 'in_progress').length;
+  const totalExpectedPages = participants.length * frqQuestions.reduce((sum, q) => sum + q.pages.length, 0);
+  const totalSubmittedPages = participants.reduce((sum, p) => sum + (p.frq_submissions?.length || 0), 0);
+  const missingPages = totalExpectedPages - totalSubmittedPages;
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <StatCard label="Total Students" value={participants.length} sub={`${inProgressCount} still taking exam`} color="blue" />
+        <StatCard label="Completed / Submitted" value={completedCount} sub={`of ${participants.length} students`} color="green" />
+        <StatCard label="Missing FRQ Pages" value={missingPages} sub={missingPages > 0 ? 'Needs teacher attention' : 'All pages submitted'} color={missingPages > 0 ? 'amber' : 'green'} />
+      </div>
+
+      {error && (
+        <div className="flex items-center gap-2 px-4 py-3 rounded-lg bg-red-50 border border-red-200">
+          <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0" />
+          <p className="text-sm text-red-600">{error}</p>
+        </div>
+      )}
+
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-100">
+          <h2 className="text-sm font-semibold text-gray-800">Student Progress</h2>
+          <p className="text-xs text-gray-400 mt-0.5">FRQ submission status for each student</p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="bg-gray-50/80">
+                <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Student</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                {frqQuestions.map(q =>
+                  q.pages.map(pageKey => (
+                    <th key={`${q.id}-${pageKey}`} className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                      {q.label} / {pageKey === 'page1' ? 'P1' : 'P2'}
+                    </th>
+                  ))
+                )}
+                <th className="text-center px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">FRQ Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {participants.length === 0 ? (
+                <tr>
+                  <td colSpan={3 + frqQuestions.reduce((s, q) => s + q.pages.length, 0)} className="text-center py-12 text-sm text-gray-400">
+                    No students have joined this session yet.
+                  </td>
+                </tr>
+              ) : (
+                participants.map(p => (
+                  <StudentRow key={p.id} participant={p} frqQuestions={frqQuestions} onUploadClick={onUploadClick} />
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ExamSessionManager() {
+  const [activeTab, setActiveTab] = useState('monitor');
   const [session, setSession] = useState(null);
   const [participants, setParticipants] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -111,12 +174,11 @@ export default function ExamSessionManager() {
   const [error, setError] = useState(null);
 
   const [uploadModal, setUploadModal] = useState({
-    open: false,
-    participant: null,
-    questionId: null,
-    questionLabel: '',
-    pageKey: null
+    open: false, participant: null, questionId: null, questionLabel: '', pageKey: null
   });
+
+  const [gradingStudents, setGradingStudents] = useState(MOCK_STUDENTS);
+  const [gradingDetail, setGradingDetail] = useState({ open: false, student: null });
 
   const frqQuestions = teacherApi.FRQ_QUESTIONS;
 
@@ -142,46 +204,36 @@ export default function ExamSessionManager() {
     }
   }, []);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useEffect(() => { loadData(); }, [loadData]);
 
   useEffect(() => {
-    const unsubscribe = teacherApi.subscribeToSubmissions(undefined, () => {
-      loadData(true);
-    });
-
+    const unsubscribe = teacherApi.subscribeToSubmissions(undefined, () => { loadData(true); });
     return unsubscribe;
   }, [loadData]);
 
   const handleUploadClick = (participant, questionId, questionLabel, pageKey) => {
-    const pageLabel = pageKey === 'page1' ? 'Page 1 (Part A, B)' : 'Page 2 (Part C, D)';
     setUploadModal({
-      open: true,
-      participant,
-      questionId,
-      questionLabel,
-      pageKey,
-      pageLabel
+      open: true, participant, questionId, questionLabel, pageKey,
+      pageLabel: pageKey === 'page1' ? 'Page 1 (Part A, B)' : 'Page 2 (Part C, D)'
     });
   };
 
-  const handleUploadComplete = () => {
-    loadData(true);
+  const handleReviewStudent = (student) => {
+    setGradingDetail({ open: true, student });
   };
 
-  const handleCloseModal = () => {
-    setUploadModal(prev => ({ ...prev, open: false }));
+  const handleStudentUpdate = (updatedStudent) => {
+    setGradingStudents(prev => prev.map(s => s.id === updatedStudent.id ? updatedStudent : s));
+    setGradingDetail(prev => ({
+      ...prev,
+      student: prev.student?.id === updatedStudent.id ? updatedStudent : prev.student
+    }));
   };
 
-  const completedCount = participants.filter(p => p.exam_status === 'submitted' || p.exam_status === 'completed').length;
-  const inProgressCount = participants.filter(p => p.exam_status === 'in_progress').length;
-
-  const totalExpectedPages = participants.length * frqQuestions.reduce((sum, q) => sum + q.pages.length, 0);
-  const totalSubmittedPages = participants.reduce((sum, p) => {
-    return sum + (p.frq_submissions?.length || 0);
-  }, 0);
-  const missingPages = totalExpectedPages - totalSubmittedPages;
+  const tabs = [
+    { id: 'monitor', label: 'Live Monitor', icon: Monitor },
+    { id: 'grading', label: 'Grading Queue', icon: ClipboardCheck }
+  ];
 
   if (loading) {
     return (
@@ -200,107 +252,75 @@ export default function ExamSessionManager() {
               <Users className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h1 className="text-lg font-bold text-gray-900">
-                {session?.exam_name || 'Exam Session'}
-              </h1>
+              <h1 className="text-lg font-bold text-gray-900">{session?.exam_name || 'Exam Session'}</h1>
               <p className="text-xs text-gray-500 mt-0.5">Teacher Session Manager</p>
             </div>
           </div>
 
-          <button
-            onClick={() => loadData(true)}
-            disabled={refreshing}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
-          >
-            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-            Refresh
-          </button>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center bg-gray-100 rounded-lg p-1">
+              {tabs.map(tab => {
+                const Icon = tab.icon;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                      activeTab === tab.id
+                        ? 'bg-white text-gray-900 shadow-sm'
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    <Icon className="w-4 h-4" />
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            <button
+              onClick={() => loadData(true)}
+              disabled={refreshing}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+              Refresh
+            </button>
+          </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-6 py-6 space-y-6">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <StatCard
-            label="Total Students"
-            value={participants.length}
-            sub={`${inProgressCount} still taking exam`}
-            color="blue"
+      <main className="max-w-7xl mx-auto px-6 py-6">
+        {activeTab === 'monitor' && (
+          <LiveMonitorTab
+            participants={participants}
+            frqQuestions={frqQuestions}
+            onUploadClick={handleUploadClick}
+            error={error}
           />
-          <StatCard
-            label="Completed / Submitted"
-            value={completedCount}
-            sub={`of ${participants.length} students`}
-            color="green"
-          />
-          <StatCard
-            label="Missing FRQ Pages"
-            value={missingPages}
-            sub={missingPages > 0 ? 'Needs teacher attention' : 'All pages submitted'}
-            color={missingPages > 0 ? 'amber' : 'green'}
-          />
-        </div>
-
-        {error && (
-          <div className="flex items-center gap-2 px-4 py-3 rounded-lg bg-red-50 border border-red-200">
-            <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0" />
-            <p className="text-sm text-red-600">{error}</p>
-          </div>
         )}
 
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-100">
-            <h2 className="text-sm font-semibold text-gray-800">Student Progress</h2>
-            <p className="text-xs text-gray-400 mt-0.5">FRQ submission status for each student</p>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="bg-gray-50/80">
-                  <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Student</th>
-                  <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-                  {frqQuestions.map(q =>
-                    q.pages.map(pageKey => (
-                      <th key={`${q.id}-${pageKey}`} className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">
-                        {q.label} / {pageKey === 'page1' ? 'P1' : 'P2'}
-                      </th>
-                    ))
-                  )}
-                  <th className="text-center px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">FRQ Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {participants.length === 0 ? (
-                  <tr>
-                    <td colSpan={3 + frqQuestions.reduce((s, q) => s + q.pages.length, 0)} className="text-center py-12 text-sm text-gray-400">
-                      No students have joined this session yet.
-                    </td>
-                  </tr>
-                ) : (
-                  participants.map(p => (
-                    <StudentRow
-                      key={p.id}
-                      participant={p}
-                      frqQuestions={frqQuestions}
-                      onUploadClick={handleUploadClick}
-                    />
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        {activeTab === 'grading' && (
+          <GradingQueue students={gradingStudents} onReview={handleReviewStudent} />
+        )}
       </main>
 
       <TeacherUploadModal
         isOpen={uploadModal.open}
-        onClose={handleCloseModal}
+        onClose={() => setUploadModal(prev => ({ ...prev, open: false }))}
         participant={uploadModal.participant}
         questionId={uploadModal.questionId}
         questionLabel={uploadModal.questionLabel}
         pageKey={uploadModal.pageKey}
         pageLabel={uploadModal.pageLabel}
-        onUploadComplete={handleUploadComplete}
+        onUploadComplete={() => loadData(true)}
+      />
+
+      <GradingDetailModal
+        isOpen={gradingDetail.open}
+        onClose={() => setGradingDetail({ open: false, student: null })}
+        student={gradingDetail.student}
+        onStudentUpdate={handleStudentUpdate}
       />
     </div>
   );
