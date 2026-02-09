@@ -1,18 +1,17 @@
-import { supabase } from '../lib/supabase';
+import { supabase } from './supabaseClient';
 
-// 데모용 기본 ID (혹시 DB 연결 실패 시 사용)
 const DEMO_PARTICIPANT_ID = 'b0000000-0000-0000-0000-000000000003';
-const DEMO_EXAM_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'; 
+const DEMO_EXAM_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
 
-// ✅ [수정됨] v2.6.6 스키마 구조(JSON)를 앱이 이해하는 구조로 변환
 function mapDBQuestionToApp(row, index) {
   const q = row.questions;
   
-  // JSONB 데이터 가져오기
+  // JSONB 데이터 가져오기 (없으면 빈 객체)
   const structureData = q.structure_data || {};
   const gradingLogic = q.grading_logic || {};
 
   // 1. 객관식 보기(Options) 처리
+  // DB에 [ {key:'A'...}, ... ] 배열로 저장된 경우와 { options: [...] } 객체로 저장된 경우 모두 대응
   const isMCQ = q.structure_type === 'mcq';
   let options = [];
   let parts = null;
@@ -22,6 +21,7 @@ function mapDBQuestionToApp(row, index) {
       ? structureData 
       : (structureData.options || []);
   } else {
+    // 주관식은 parts 정보 가져오기
     parts = structureData.parts || null;
   }
 
@@ -32,16 +32,21 @@ function mapDBQuestionToApp(row, index) {
 
   return {
     id: q.id,
-    question_number: index + 1,
+    question_number: index + 1, // (호출부에서 MCQ/FRQ 별로 다시 번호 매김)
     question_type: q.structure_type || 'mcq',
     question_text: q.content_text || '',
     passage: q.passage || null,
     image_url: imageUrl,
+    
+    // 매핑된 데이터
     options,
     parts,
+    
+    // 3. 정답 및 해설 매핑 (DB 컬럼명 차이 해결: correct_option vs correct_answer)
     correct_answer: gradingLogic.correct_option || gradingLogic.correct_answer || null,
     explanation: gradingLogic.explanation || q.explanation || null,
-    rubric: gradingLogic.rubric || null,
+    rubric: gradingLogic.rubric || null, // 주관식 채점 기준
+    
     points: row.points || 1
   };
 }
@@ -50,31 +55,16 @@ export const studentApi = {
   DEMO_PARTICIPANT_ID,
   DEMO_EXAM_ID,
 
-  // ✅ [핵심 수정] ID가 틀려도 DB에 있는 첫 번째 시험지를 무조건 가져옵니다.
   async getExamQuestions(examId = DEMO_EXAM_ID) {
-    console.log(`🔍 [Debug] Searching for ANY exam in DB...`);
+    console.log(`🔍 [Debug] Fetching questions for Exam ID: "${examId}"`);
 
-    // 1. DB에 있는 아무 시험지나 하나 찾습니다.
-    const { data: anyExam, error: searchError } = await supabase
+    // 1. 먼저 조건 없이 시험지 연결 테이블만 조회해봅니다 (연결 테스트)
+    const { count } = await supabase
       .from('exam_questions')
-      .select('exam_id')
-      .limit(1);
+      .select('*', { count: 'exact', head: true });
+    console.log(`📊 [Debug] Total rows in exam_questions table: ${count}`);
 
-    if (searchError) {
-      console.error('❌ [Debug] Connection Failed:', searchError);
-      throw searchError;
-    }
-
-    if (!anyExam || anyExam.length === 0) {
-      console.error('❌ [Debug] DB is empty (0 rows). Check Supabase Table Editor.');
-      throw new Error('No exams found in DB.');
-    }
-
-    // 2. 찾은 진짜 ID로 교체합니다.
-    const realExamId = anyExam[0].exam_id;
-    console.log(`✅ [Debug] Found Real Exam ID: "${realExamId}"`);
-
-    // 3. 진짜 ID로 문제 조회
+    // 2. 실제 데이터 조회
     const { data, error } = await supabase
       .from('exam_questions')
       .select(`
@@ -92,17 +82,31 @@ export const studentApi = {
           difficulty
         )
       `)
-      .eq('exam_id', realExamId)
+      .eq('exam_id', examId)
       .order('sequence_order', { ascending: true });
 
-    if (error) throw error;
+    if (error) {
+      console.error('❌ [Debug] Supabase Error:', error);
+      throw error;
+    }
 
-    console.log('✅ [Debug] Questions loaded:', data?.length);
+    console.log('✅ [Debug] Data returned from Supabase:', data);
 
+    if (!data || data.length === 0) {
+      console.warn(`⚠️ [Debug] No questions found! Check if examId "${examId}" matches DB.`);
+      throw new Error('No questions found for this exam');
+    }
+
+    // 데이터 매핑 로직
     let mcqNum = 0;
     let frqNum = 0;
     return data.map((row, i) => {
-      if (!row.questions) return null;
+      // 만약 Join 된 questions가 null이면 데이터 무결성 문제
+      if (!row.questions) {
+        console.error('❌ [Debug] Broken Link! exam_question exists but question is null.', row);
+        return null; 
+      }
+      
       const mapped = mapDBQuestionToApp(row, i);
       if (mapped.question_type === 'frq') {
         frqNum++;
@@ -112,31 +116,76 @@ export const studentApi = {
         mapped.question_number = mcqNum;
       }
       return mapped;
-    }).filter(q => q !== null);
+    }).filter(q => q !== null); // 깨진 데이터 제외
   },
 
   async getFRQSubmissions(participantId = DEMO_PARTICIPANT_ID) {
     const { data, error } = await supabase
-      .from('frq_submissions') // 테이블 존재 여부 확인 필요 (없으면 빈 배열 반환)
+      .from('frq_submissions')
       .select('*')
       .eq('participant_id', participantId);
 
-    if (error) {
-       console.warn("FRQ fetch warning:", error.message);
-       return [];
-    }
+    if (error) throw error;
     return data || [];
   },
 
   async uploadFRQFile(file, participantId, questionId, pageKey) {
-    return URL.createObjectURL(file); // 임시 URL (Storage 미구현 시)
+    const fileExt = file.name.split('.').pop();
+    const filePath = `${participantId}/${questionId}/${pageKey}_${Date.now()}.${fileExt}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('frq-uploads')
+      .upload(filePath, file, { upsert: true });
+
+    if (uploadError) throw uploadError;
+
+    const { data: { publicUrl } } = supabase.storage
+      .from('frq-uploads')
+      .getPublicUrl(filePath);
+
+    return publicUrl;
   },
 
   async saveFRQSubmission(participantId, questionId, pageKey, fileUrl, fileName) {
-    console.log('Saved FRQ:', { questionId, fileName });
+    const { data, error } = await supabase
+      .from('frq_submissions')
+      .upsert({
+        participant_id: participantId,
+        question_id: questionId,
+        page_key: pageKey,
+        file_url: fileUrl,
+        file_name: fileName,
+        submitted_by: 'student',
+        uploaded_at: new Date().toISOString()
+      }, {
+        onConflict: 'participant_id,question_id,page_key'
+      })
+      .select()
+      .maybeSingle();
+
+    if (error) throw error;
+    return data;
   },
 
-  subscribeToFRQSubmissions(participantId, callback) {
-    return () => {};
+  subscribeToFRQSubmissions(participantId = DEMO_PARTICIPANT_ID, callback) {
+    const channel = supabase
+      .channel(`student-frq-${participantId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'frq_submissions',
+          filter: `participant_id=eq.${participantId}`
+        },
+        (payload) => {
+          callback(payload);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }
 };
