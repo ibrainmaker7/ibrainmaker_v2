@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { FileText, PenLine } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import BluebookLayout from '../../components/exam/layouts/BluebookLayout';
 import OptionRadio from '../../components/exam/atoms/OptionRadio';
 import DataCollectionZone from '../../components/exam/molecules/DataCollectionZone';
@@ -10,8 +11,10 @@ import { useExamStore } from '../../store/examStore';
 import Modal from '../../components/common/Modal';
 import { ALL_QUESTIONS, EXAM_PHASES } from '../../data/mockExamData';
 import { studentApi } from '../../api/studentApi';
+import { reviewApi } from '../../api/reviewApi';
 
 export default function ExamRoom() {
+  const navigate = useNavigate();
   const {
     currentQuestionIndex,
     setCurrentQuestionIndex,
@@ -184,10 +187,24 @@ export default function ExamRoom() {
     setExamEnded(true);
   };
 
-  const handleFinalSubmit = () => {
-    console.log('Exam submitted:', answers);
-    clearExam();
-    alert('Exam submitted successfully!');
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleFinalSubmit = async () => {
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      const attempt = await reviewApi.submitExamAttempt(
+        participantId,
+        'demo-exam-1',
+        ALL_QUESTIONS,
+        answers
+      );
+      clearExam();
+      navigate(`/student/review?attemptId=${attempt.id}`);
+    } catch (err) {
+      console.error('Failed to submit exam:', err);
+      setSubmitting(false);
+    }
   };
 
   const handleQuestionSelect = (localIdx) => {

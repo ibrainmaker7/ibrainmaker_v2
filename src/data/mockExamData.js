@@ -12,7 +12,8 @@ export const ALL_QUESTIONS = [
       { key: 'C', text: '$21$' },
       { key: 'D', text: '$27$' }
     ],
-    correct_answer: 'B'
+    correct_answer: 'B',
+    explanation: 'By the Fundamental Theorem of Calculus, $f\'(x) = x^2 + 2x$. Substituting $x = 3$: $f\'(3) = 3^2 + 2(3) = 9 + 6 = 15$.'
   },
   {
     id: 'q2',
@@ -27,7 +28,8 @@ export const ALL_QUESTIONS = [
       { key: 'C', text: '$\\frac{1}{2}$' },
       { key: 'D', text: '$1$' }
     ],
-    correct_answer: 'B'
+    correct_answer: 'B',
+    explanation: 'Using the power rule for integration: $\\int_{0}^{1} x^2 dx = \\left[\\frac{x^3}{3}\\right]_0^1 = \\frac{1}{3} - 0 = \\frac{1}{3}$.'
   },
   {
     id: 'q3',
@@ -42,7 +44,8 @@ export const ALL_QUESTIONS = [
       { key: 'C', text: '$x^2e^{x^2}$' },
       { key: 'D', text: '$2e^{x^2}$' }
     ],
-    correct_answer: 'B'
+    correct_answer: 'B',
+    explanation: 'Let $u = x^2$, so $f(x) = e^u$. By the chain rule: $f\'(x) = e^u \\cdot \\frac{du}{dx} = e^{x^2} \\cdot 2x = 2xe^{x^2}$.'
   },
   {
     id: 'q4',
@@ -57,7 +60,8 @@ export const ALL_QUESTIONS = [
       { key: 'C', text: '$\\infty$' },
       { key: 'D', text: 'Does not exist' }
     ],
-    correct_answer: 'B'
+    correct_answer: 'B',
+    explanation: 'This is a fundamental limit in calculus. By L\'Hopital\'s Rule or the Squeeze Theorem, $\\displaystyle\\lim_{x \\to 0} \\frac{\\sin(x)}{x} = 1$. As $x \\to 0$, $\\sin(x) \\approx x$, so the ratio approaches $1$.'
   },
   {
     id: 'q5',
@@ -67,7 +71,8 @@ export const ALL_QUESTIONS = [
     passage: null,
     image_url: null,
     options: [],
-    correct_answer: null
+    correct_answer: null,
+    explanation: null
   },
   {
     id: 'q6',
@@ -77,7 +82,8 @@ export const ALL_QUESTIONS = [
     passage: null,
     image_url: null,
     options: [],
-    correct_answer: null
+    correct_answer: null,
+    explanation: null
   }
 ];
 
