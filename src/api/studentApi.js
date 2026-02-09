@@ -5,24 +5,46 @@ const DEMO_EXAM_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
 
 function mapDBQuestionToApp(row, index) {
   const q = row.questions;
+  
+  // JSONB 데이터 안전하게 가져오기
   const structureData = q.structure_data || {};
   const gradingLogic = q.grading_logic || {};
 
-  const options = structureData.options || [];
+  // 1. 객관식 보기 처리 (DB는 structure_data 자체가 배열일 수 있음)
+  const isMCQ = q.structure_type === 'mcq';
+  let options = [];
+  let parts = null;
+
+  if (isMCQ) {
+    // 배열이면 그대로 쓰고, 아니면 .options를 찾음
+    options = Array.isArray(structureData) ? structureData : (structureData.options || []);
+  } else {
+    // 주관식은 parts 정보 가져오기 (예: ["page1", "page2"])
+    parts = structureData.parts || null;
+  }
+
+  // 2. 이미지 URL 처리
   const imageUrl = (q.content_images && q.content_images.length > 0)
     ? q.content_images[0]
     : null;
 
   return {
     id: q.id,
-    question_number: index + 1,
+    question_number: index + 1, // (나중에 호출부에서 재설정됨)
     question_type: q.structure_type || 'mcq',
-    question_text: q.content_text || '',
+    question_text: q.content_text || '', // DB 컬럼명 매핑
     passage: q.passage || null,
     image_url: imageUrl,
+    
+    // 매핑된 데이터들
     options,
-    correct_answer: gradingLogic.correct_answer || null,
-    explanation: q.explanation || null,
+    parts, 
+    
+    // 정답 및 해설 매핑 (DB 컬럼명 차이 해결)
+    correct_answer: gradingLogic.correct_option || gradingLogic.correct_answer || null,
+    explanation: gradingLogic.explanation || q.explanation || null,
+    rubric: gradingLogic.rubric || null, // 주관식 채점 기준
+    
     points: row.points || 1
   };
 }
@@ -55,10 +77,13 @@ export const studentApi = {
     if (error) throw error;
     if (!data || data.length === 0) throw new Error('No questions found for this exam');
 
+    // 문제 번호 매기기 로직 (유지)
     let mcqNum = 0;
     let frqNum = 0;
     return data.map((row, i) => {
       const mapped = mapDBQuestionToApp(row, i);
+      
+      // 번호 체계: FRQ와 MCQ를 따로 카운트
       if (mapped.question_type === 'frq') {
         frqNum++;
         mapped.question_number = frqNum;
