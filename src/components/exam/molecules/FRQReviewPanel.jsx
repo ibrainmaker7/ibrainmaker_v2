@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
-import { FileImage, ChevronLeft, ChevronRight, X, Loader2, Bot } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { FileImage, X, Loader2, Bot, Check, CircleX } from 'lucide-react';
+import LatexText from '../atoms/LatexText';
+import { reviewApi } from '../../../api/reviewApi';
 
 function ImageViewer({ url, label, onClose }) {
   return (
@@ -21,8 +23,144 @@ function ImageViewer({ url, label, onClose }) {
   );
 }
 
-export default function FRQReviewPanel({ submissions }) {
+function ScoreBadge({ score, maxScore }) {
+  const pct = maxScore > 0 ? score / maxScore : 0;
+  let ringColor = 'text-red-500';
+  let bgColor = 'bg-red-50';
+  let textColor = 'text-red-700';
+  if (pct >= 0.8) {
+    ringColor = 'text-green-500';
+    bgColor = 'bg-green-50';
+    textColor = 'text-green-700';
+  } else if (pct >= 0.6) {
+    ringColor = 'text-amber-500';
+    bgColor = 'bg-amber-50';
+    textColor = 'text-amber-700';
+  }
+
+  const radius = 40;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference * (1 - pct);
+
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <div className="relative w-24 h-24">
+        <svg className="w-24 h-24 -rotate-90" viewBox="0 0 100 100">
+          <circle cx="50" cy="50" r={radius} fill="none" stroke="#e5e7eb" strokeWidth="6" />
+          <circle
+            cx="50" cy="50" r={radius} fill="none"
+            className={ringColor}
+            stroke="currentColor"
+            strokeWidth="6"
+            strokeLinecap="round"
+            strokeDasharray={circumference}
+            strokeDashoffset={offset}
+            style={{ transition: 'stroke-dashoffset 1s ease-out' }}
+          />
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <span className={`text-2xl font-bold ${textColor}`}>{score}</span>
+          <span className="text-xs text-gray-400">/ {maxScore}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RubricTable({ rubric }) {
+  const earned = rubric.filter(r => r.met).length;
+  return (
+    <div className="border border-gray-200 rounded-xl overflow-hidden">
+      <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+        <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Rubric Breakdown</span>
+        <span className="text-xs text-gray-500">{earned}/{rubric.length} criteria met</span>
+      </div>
+      <div className="divide-y divide-gray-100">
+        {rubric.map((item, i) => (
+          <div key={i} className={`flex items-start gap-3 px-4 py-2.5 ${item.met ? 'bg-white' : 'bg-red-50/40'}`}>
+            <div className="flex-shrink-0 mt-0.5">
+              {item.met ? (
+                <div className="w-5 h-5 rounded-full bg-green-100 flex items-center justify-center">
+                  <Check className="w-3 h-3 text-green-600" />
+                </div>
+              ) : (
+                <div className="w-5 h-5 rounded-full bg-red-100 flex items-center justify-center">
+                  <CircleX className="w-3 h-3 text-red-500" />
+                </div>
+              )}
+            </div>
+            <span className={`text-sm ${item.met ? 'text-gray-700' : 'text-red-700'}`}>
+              <LatexText>{item.criterion}</LatexText>
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function GradingReportCard({ result }) {
+  return (
+    <div className="border border-blue-200 rounded-xl overflow-hidden bg-white">
+      <div className="px-4 py-3 bg-gradient-to-r from-blue-600 to-cyan-600 flex items-center gap-2">
+        <Bot className="w-4 h-4 text-white" />
+        <span className="text-sm font-semibold text-white">AI Grading Report</span>
+      </div>
+
+      <div className="p-4 space-y-4">
+        <div className="flex items-start gap-5">
+          <ScoreBadge score={result.score} maxScore={result.maxScore} />
+          <div className="flex-1 min-w-0">
+            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Feedback</h4>
+            <div className="text-sm text-gray-700 leading-relaxed">
+              <LatexText>{result.feedback}</LatexText>
+            </div>
+          </div>
+        </div>
+
+        <RubricTable rubric={result.rubric} />
+      </div>
+    </div>
+  );
+}
+
+function GradingPending() {
+  return (
+    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+      <div className="flex items-start gap-3">
+        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center">
+          <Loader2 className="w-4 h-4 text-amber-600 animate-spin" />
+        </div>
+        <div className="flex-1">
+          <h4 className="text-sm font-semibold text-amber-800 mb-1">AI Grading in Progress</h4>
+          <p className="text-sm text-amber-700">Analyzing your handwritten response... This typically takes a few seconds.</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function FRQReviewPanel({ submissions, questionId }) {
   const [viewerImage, setViewerImage] = useState(null);
+  const [gradingResult, setGradingResult] = useState(null);
+  const [gradingLoading, setGradingLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setGradingLoading(true);
+    setGradingResult(null);
+
+    reviewApi.getFRQGradingResult(questionId).then((result) => {
+      if (!cancelled) {
+        setGradingResult(result);
+        setGradingLoading(false);
+      }
+    }).catch(() => {
+      if (!cancelled) setGradingLoading(false);
+    });
+
+    return () => { cancelled = true; };
+  }, [questionId]);
 
   const pages = [
     { key: 'page1', label: 'Page 1 (Part A, B)' },
@@ -73,20 +211,7 @@ export default function FRQReviewPanel({ submissions }) {
         </div>
       )}
 
-      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-        <div className="flex items-start gap-3">
-          <div className="flex-shrink-0 w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center">
-            <Bot className="w-4 h-4 text-amber-600" />
-          </div>
-          <div className="flex-1">
-            <h4 className="text-sm font-semibold text-amber-800 mb-1">AI Feedback & Score</h4>
-            <div className="flex items-center gap-2">
-              <Loader2 className="w-3.5 h-3.5 text-amber-500 animate-spin" />
-              <p className="text-sm text-amber-700">Grading in progress... Results will appear here once processing is complete.</p>
-            </div>
-          </div>
-        </div>
-      </div>
+      {gradingLoading ? <GradingPending /> : gradingResult ? <GradingReportCard result={gradingResult} /> : null}
 
       {viewerImage && (
         <ImageViewer

@@ -153,7 +153,7 @@ export default function ReviewMode() {
       </div>
 
       {isFRQ ? (
-        <FRQReviewPanel submissions={frqSubmissions[currentQuestion.id] || {}} />
+        <FRQReviewPanel submissions={frqSubmissions[currentQuestion.id] || {}} questionId={currentQuestion.id} />
       ) : (
         <>
           <div className="flex flex-col w-full">

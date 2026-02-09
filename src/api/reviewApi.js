@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient';
+import { simulateAIGrading } from '../lib/mockGemini';
 
 export const reviewApi = {
   async submitExamAttempt(participantId, examId, questions, answers) {
@@ -80,5 +81,9 @@ export const reviewApi = {
 
     if (error) throw error;
     return data || [];
+  },
+
+  async getFRQGradingResult(questionId) {
+    return simulateAIGrading(questionId);
   }
 };
